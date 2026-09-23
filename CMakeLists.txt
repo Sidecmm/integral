@@ -19,6 +19,8 @@ option(BUILD_AVX2_BMI2 "Build with AVX2 + BMI2 optimizations" OFF)
 option(BUILD_AVX2 "Build with AVX2 optimizations" OFF)
 option(BUILD_SSE41_POPCNT "Build with SSE4.1 + POPCNT optimizations" OFF)
 option(BUILD_DEBUG "Build with debug information" OFF)
+option(BUILD_NEON_ANDROID "Build for Android ARM64/NEON" OFF)
+option(USE_SSE2NEON "Use sse2neon to emulate SSE on ARM" OFF)
 
 # Allow user to specify EVALFILE through CMake
 set(NETWORK_NAME piplup)
