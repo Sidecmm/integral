@@ -10,6 +10,8 @@ option(BUILD_AVX2 "Build with AVX2 optimizations" ${PREPROCESS_BUILD_AVX2})
 option(BUILD_SSE41_POPCNT "Build with SSE4.1 + POPCNT optimizations" ${PREPROCESS_BUILD_SSE41_POPCNT})
 option(BUILD_DEBUG "Build with debug information" ${PREPROCESS_BUILD_DEBUG})
 option(SPARSE_PERMUTE "Use sparse permute network format" ${PREPROCESS_SPARSE_PERMUTE})
+option(BUILD_NEON_ANDROID "Build for Android ARM64/NEON" ${PREPROCESS_BUILD_NEON_ANDROID})
+option(USE_SSE2NEON "Use sse2neon to emulate SSE on ARM" ${PREPROCESS_USE_SSE2NEON})
 
 # Architecture-specific flags
 set(CXXFLAGS_NATIVE "-march=native")
@@ -18,11 +20,18 @@ set(CXXFLAGS_AVX512 "-march=x86-64-v4 -mtune=skylake-avx512 -DBUILD_AVX512 -DBUI
 set(CXXFLAGS_AVX2_BMI2 "-march=haswell -mtune=haswell -mavx2 -mbmi2 -DBUILD_AVX2_BMI2 -DBUILD_FAST_PEXT")
 set(CXXFLAGS_AVX2 "-march=bdver4 -mno-tbm -mno-sse4a -mno-bmi2 -mtune=znver2 -DBUILD_AVX2")
 set(CXXFLAGS_SSE41_POPCNT "-march=nehalem -mtune=sandybridge -DBUILD_SSE41_POPCNT")
+set(CXXFLAGS_NEON_ANDROID "-march=armv8-a+simd+fp -DBUILD_NEON_ANDROID")
 
 # Apply the correct flags based on the build type
 if (BUILD_DEBUG)
     set(CMAKE_BUILD_TYPE Debug)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS_DEBUG} -g -O0")
+elseif (BUILD_NEON_ANDROID)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXXFLAGS_NEON_ANDROID}")
+    if (USE_SSE2NEON)
+        include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../third-party/sse2neon)
+        add_compile_definitions(USE_SSE2NEON)
+    endif()
 elseif (BUILD_VNNI512)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXXFLAGS_VNNI512} -DBUILD_VNNI512")
 elseif (BUILD_AVX512)
