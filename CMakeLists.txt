@@ -74,7 +74,7 @@ add_subdirectory(preprocess)
 # Custom command to run preprocessing
 add_custom_command(
         OUTPUT ${PREPROCESSED_FILE}
-        COMMAND preprocess ${EVALFILE} ${PREPROCESSED_FILE}
+        COMMAND $<TARGET_FILE:preprocess> ${EVALFILE} ${PREPROCESSED_FILE}
         DEPENDS preprocess ${EVALFILE}
         COMMENT "Running net preprocessing"
         VERBATIM
