@@ -69,20 +69,30 @@ set(PREPROCESS_BUILD_NEON_ANDROID ${BUILD_NEON_ANDROID} CACHE INTERNAL "")
 set(PREPROCESS_USE_SSE2NEON ${USE_SSE2NEON} CACHE INTERNAL "")
 
 # Add subdirectory containing the preprocess project
-add_subdirectory(preprocess)
+# When cross-compiling (e.g. Android ARM64 on an x86_64 host), the freshly
+# built preprocess binary cannot run on the build machine. In that case we
+# expect processed.nnue to already exist (the workflow builds preprocess for
+# the host first and runs it).
+if (CMAKE_CROSSCOMPILING)
+    if (NOT EXISTS ${PREPROCESSED_FILE})
+        message(FATAL_ERROR
+                "Cross-compiling: ${PREPROCESSED_FILE} must already exist. "
+                "Build preprocess for the host and run it on ${EVALFILE} first.")
+    endif()
+    message(STATUS "Cross-compiling: using pre-existing ${PREPROCESSED_FILE}")
+else ()
+    add_subdirectory(preprocess)
 
-# Custom command to run preprocessing
-add_custom_command(
-        OUTPUT ${PREPROCESSED_FILE}
-        COMMAND $<TARGET_FILE:preprocess> ${EVALFILE} ${PREPROCESSED_FILE}
-        DEPENDS preprocess ${EVALFILE}
-        COMMENT "Running net preprocessing"
-        VERBATIM
-)
+    add_custom_command(
+            OUTPUT ${PREPROCESSED_FILE}
+            COMMAND $<TARGET_FILE:preprocess> ${EVALFILE} ${PREPROCESSED_FILE}
+            DEPENDS preprocess ${EVALFILE}
+            COMMENT "Running net preprocessing"
+            VERBATIM
+    )
 
-# Custom target that depends on the output file
-add_custom_target(run_preprocess ALL DEPENDS ${PREPROCESSED_FILE})
-
+    add_custom_target(run_preprocess ALL DEPENDS ${PREPROCESSED_FILE})
+endif ()
 # Define preprocessed file as a macro so it’s accessible from C++
 add_definitions(-DEVALFILE="${PREPROCESSED_FILE}")
 
@@ -221,5 +231,7 @@ add_executable(integral ${SOURCES}
         src/data_gen/format/binpack.h
         src/engine/search/cuckoo.cc)
 
-# Make sure main build depends on this
-add_dependencies(integral run_preprocess)
+# Make sure main build depends on this — only when we actually run preprocess.
+if (NOT CMAKE_CROSSCOMPILING)
+    add_dependencies(integral run_preprocess)
+endif ()
