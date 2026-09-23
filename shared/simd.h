@@ -11,7 +11,31 @@
 
 #include "../src/utils/types.h"
 
-#if defined(BUILD_NATIVE)
+#if defined(BUILD_NEON_ANDROID) && defined(USE_SSE2NEON)
+// Android / ARM64 build using sse2neon to emulate the SSE4.1 code path.
+// sse2neon.h must be on the include path (see CMake patch).
+#include "sse2neon.h"
+#define BUILD_HAS_BMI2 0
+#define BUILD_HAS_AVX512VBMI 0
+#define BUILD_HAS_AVX512VNNI 0
+#define BUILD_HAS_AVX512 0
+#define BUILD_HAS_AVX2 0
+#define BUILD_HAS_SSE41 1
+#define BUILD_HAS_BMI1 0
+#define BUILD_HAS_POPCNT 1
+#define BUILD_HAS_NEON 1
+#elif defined(BUILD_NEON_ANDROID)
+// Native Android NEON build (no sse2neon). Uses compiler vector extensions.
+#define BUILD_HAS_BMI2 0
+#define BUILD_HAS_AVX512VBMI 0
+#define BUILD_HAS_AVX512VNNI 0
+#define BUILD_HAS_AVX512 0
+#define BUILD_HAS_AVX2 0
+#define BUILD_HAS_SSE41 0
+#define BUILD_HAS_BMI1 0
+#define BUILD_HAS_POPCNT 1
+#define BUILD_HAS_NEON 1
+#elif defined(BUILD_NATIVE)
 #if __BMI2__ && defined(BUILD_FAST_PEXT)
 #define BUILD_HAS_BMI2 1
 #else
