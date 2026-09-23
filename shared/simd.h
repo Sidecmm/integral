@@ -116,7 +116,10 @@
 #define BUILD_HAS_SIMD \
   (BUILD_HAS_AVX512 || BUILD_HAS_AVX2 || BUILD_HAS_SSE41 || BUILD_HAS_NEON)
 
-#if BUILD_HAS_AVX512 || BUILD_HAS_AVX2 || BUILD_HAS_SSE41
+#if defined(BUILD_NEON_ANDROID) && defined(USE_SSE2NEON)
+// sse2neon.h was already included in the first block above.
+// Do NOT include <immintrin.h> here — it does not exist on ARM.
+#elif BUILD_HAS_AVX512 || BUILD_HAS_AVX2 || BUILD_HAS_SSE41
 #include <immintrin.h>
 #elif BUILD_HAS_NEON
 #include <arm_neon.h>
