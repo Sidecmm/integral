@@ -25,12 +25,6 @@ jobs:
           rm -rf third-party/sse2neon
           git clone --depth 1 https://github.com/DLTcollab/sse2neon.git third-party/sse2neon
 
-      # ------------------------------------------------------------------
-      # All source-level patches for Android happen here, in the workflow.
-      # The repo is never edited permanently. Patches are idempotent:
-      # any earlier NEON branch is stripped and replaced, so running this
-      # repeatedly on top of a partially-patched tree still converges.
-      # ------------------------------------------------------------------
       - name: Patch source for Android
         shell: python
         run: |
@@ -43,18 +37,17 @@ jobs:
 
           def patch(path, old, new, required=True):
               if not os.path.exists(path):
-                  print(f"[skip] {path} missing"); return
+                  print("[skip] " + path + " missing"); return
               s = read(path)
               if old not in s:
                   if required:
-                      print(f"[WARN] pattern not found in {path}: {old[:80]!r}")
+                      print("[WARN] pattern not found in " + path + ": " + repr(old[:80]))
                   return
               s = s.replace(old, new, 1)
               write(path, s)
-              print(f"[ok] patched {path}")
+              print("[ok] patched " + path)
 
           def strip_all_between(path, marker, end_regex):
-              """Remove every occurrence of `marker ... <first end_regex>` block."""
               if not os.path.exists(path): return
               removed = 0
               while True:
@@ -68,19 +61,15 @@ jobs:
                   write(path, s)
                   removed += 1
               if removed:
-                  print(f"[ok] stripped {removed} old block(s) from {path}")
+                  print("[ok] stripped " + str(removed) + " old block(s) from " + path)
 
           NEON_END = r"elseif \(BUILD_"
 
-          # ---- Idempotent pre-clean: remove any previously inserted branches ----
-          # Root CMakeLists.txt
           strip_all_between("CMakeLists.txt", "elseif (BUILD_NEON_ANDROID)", NEON_END)
           strip_all_between("CMakeLists.txt", "if (BUILD_NEON_ANDROID)",     NEON_END)
-          # Preprocess CMakeLists.txt
           strip_all_between("preprocess/CMakeLists.txt", "elseif (BUILD_NEON_ANDROID)", NEON_END)
           strip_all_between("preprocess/CMakeLists.txt", "if (BUILD_NEON_ANDROID)",     NEON_END)
 
-          # ---- 1. src/utils/types.h : <string> is needed by std::string ----
           p = "src/utils/types.h"
           if os.path.exists(p):
               s = read(p)
@@ -88,31 +77,28 @@ jobs:
                   patch(p, "#define INTEGRAL_TYPES_H_\n",
                            "#define INTEGRAL_TYPES_H_\n\n#include <string>\n")
 
-          # ---- 2. src/utils/hash_table.h : aligned_alloc absent before API 28 ----
           patch("src/utils/hash_table.h",
                 "ptr = std::aligned_alloc(alignment, size);",
                 "if (posix_memalign((void**)&ptr, alignment, size) != 0) ptr = nullptr;")
 
-          # ---- 3. shared/simd.h : Android/SSE2NEON branch ----
           p = "shared/simd.h"
           if os.path.exists(p) and "BUILD_NEON_ANDROID) && defined(USE_SSE2NEON)" not in read(p):
-              android_branch = """\
-#if defined(BUILD_NEON_ANDROID) && defined(USE_SSE2NEON)
-#include "sse2neon.h"
-#define BUILD_HAS_BMI2 0
-#define BUILD_HAS_AVX512VBMI 0
-#define BUILD_HAS_AVX512VNNI 0
-#define BUILD_HAS_AVX512 0
-#define BUILD_HAS_AVX2 0
-#define BUILD_HAS_SSE41 1
-#define BUILD_HAS_BMI1 0
-#define BUILD_HAS_POPCNT 1
-#define BUILD_HAS_NEON 1
-#elif defined(BUILD_NATIVE)
-"""
+              android_branch = (
+                  '#if defined(BUILD_NEON_ANDROID) && defined(USE_SSE2NEON)\n'
+                  '#include "sse2neon.h"\n'
+                  '#define BUILD_HAS_BMI2 0\n'
+                  '#define BUILD_HAS_AVX512VBMI 0\n'
+                  '#define BUILD_HAS_AVX512VNNI 0\n'
+                  '#define BUILD_HAS_AVX512 0\n'
+                  '#define BUILD_HAS_AVX2 0\n'
+                  '#define BUILD_HAS_SSE41 1\n'
+                  '#define BUILD_HAS_BMI1 0\n'
+                  '#define BUILD_HAS_POPCNT 1\n'
+                  '#define BUILD_HAS_NEON 1\n'
+                  '#elif defined(BUILD_NATIVE)\n'
+              )
               patch(p, "#if defined(BUILD_NATIVE)\n", android_branch)
 
-          # ---- 3b. shared/simd.h : don't pull <immintrin.h> on ARM ----
           patch("shared/simd.h",
                 "#if BUILD_HAS_AVX512 || BUILD_HAS_AVX2 || BUILD_HAS_SSE41\n#include <immintrin.h>",
                 "#if defined(BUILD_NEON_ANDROID) && defined(USE_SSE2NEON)\n"
@@ -121,22 +107,19 @@ jobs:
                 "#include <immintrin.h>",
                 required=False)
 
-          # ---- 4. CMakeLists.txt : add options ----
           patch("CMakeLists.txt",
                 'option(BUILD_DEBUG "Build with debug information" OFF)',
                 'option(BUILD_DEBUG "Build with debug information" OFF)\n'
                 'option(BUILD_NEON_ANDROID "Build for Android ARM64/NEON" OFF)\n'
                 'option(USE_SSE2NEON "Use sse2neon to emulate SSE on ARM" OFF)',
-                required=False)  # skip if already there
+                required=False)
 
-          # ---- 4b. CMakeLists.txt : forward options to preprocess sub-build ----
           patch("CMakeLists.txt",
                 'set(PREPROCESS_SPARSE_PERMUTE ${SPARSE_PERMUTE} CACHE INTERNAL "")',
                 'set(PREPROCESS_SPARSE_PERMUTE ${SPARSE_PERMUTE} CACHE INTERNAL "")\n'
                 'set(PREPROCESS_BUILD_NEON_ANDROID ${BUILD_NEON_ANDROID} CACHE INTERNAL "")\n'
                 'set(PREPROCESS_USE_SSE2NEON ${USE_SSE2NEON} CACHE INTERNAL "")')
 
-          # ---- 4c. CMakeLists.txt : insert fresh NEON branch with constexpr flags ----
           patch("CMakeLists.txt",
                 'elseif (BUILD_VNNI512)\n'
                 '    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXXFLAGS_VNNI512} -DBUILD_VNNI512")',
@@ -149,7 +132,6 @@ jobs:
                 'elseif (BUILD_VNNI512)\n'
                 '    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXXFLAGS_VNNI512} -DBUILD_VNNI512")')
 
-          # ---- 4d. CMakeLists.txt : skip preprocess on cross-compile ----
           patch("CMakeLists.txt",
                 "# Add subdirectory containing the preprocess project\nadd_subdirectory(preprocess)",
                 "# Add subdirectory containing the preprocess project (skipped on cross-compile)\n"
@@ -158,7 +140,6 @@ jobs:
                 "endif()",
                 required=False)
 
-          # ---- 4e. CMakeLists.txt : skip custom command/target on cross-compile ----
           patch("CMakeLists.txt",
                 "# Custom command to run preprocessing\n"
                 "add_custom_command(\n"
@@ -188,7 +169,6 @@ jobs:
                 "endif()",
                 required=False)
 
-          # ---- 4f. CMakeLists.txt : skip -stdlib=libstdc++ on Android ----
           patch("CMakeLists.txt",
                 'if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")\n'
                 '    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libstdc++")\n'
@@ -198,14 +178,12 @@ jobs:
                 'endif ()',
                 required=False)
 
-          # ---- 4g. CMakeLists.txt : skip add_dependencies on cross-compile ----
           patch("CMakeLists.txt",
                 "add_dependencies(integral run_preprocess)",
                 "if (NOT CMAKE_CROSSCOMPILING)\n"
                 "    add_dependencies(integral run_preprocess)\n"
                 "endif()")
 
-          # ---- 5. preprocess/CMakeLists.txt : add options ----
           patch("preprocess/CMakeLists.txt",
                 'option(SPARSE_PERMUTE "Use sparse permute network format" ${PREPROCESS_SPARSE_PERMUTE})',
                 'option(SPARSE_PERMUTE "Use sparse permute network format" ${PREPROCESS_SPARSE_PERMUTE})\n'
@@ -213,7 +191,6 @@ jobs:
                 'option(USE_SSE2NEON "Use sse2neon to emulate SSE on ARM" ${PREPROCESS_USE_SSE2NEON})',
                 required=False)
 
-          # ---- 5b. preprocess/CMakeLists.txt : insert fresh NEON branch ----
           patch("preprocess/CMakeLists.txt",
                 'elseif (BUILD_VNNI512)\n'
                 '    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXXFLAGS_VNNI512} -DBUILD_VNNI512")',
@@ -227,19 +204,15 @@ jobs:
                 '    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${CXXFLAGS_VNNI512} -DBUILD_VNNI512")',
                 required=False)
 
-          # ---- Sanity report ----
-          print("\n=== Sanity check ===")
+          print("=== Sanity check ===")
           for path in ["CMakeLists.txt", "preprocess/CMakeLists.txt"]:
               if os.path.exists(path):
                   s = read(path)
                   n = s.count("elseif (BUILD_NEON_ANDROID)")
                   flags = "-fconstexpr-steps=1000000000" in s
-                  print(f"  {path}: NEON branches={n}, has_constexpr_flags={flags}")
+                  print("  " + path + ": NEON branches=" + str(n) + ", has_constexpr_flags=" + str(flags))
           print("=== Patches applied ===")
 
-      # ------------------------------------------------------------------
-      # Host build: preprocess the network on x86_64 (the runner).
-      # ------------------------------------------------------------------
       - name: Configure host build (for preprocess tool)
         run: |
           cmake -B build-host -G Ninja \
@@ -254,9 +227,6 @@ jobs:
           mkdir -p build-android
           ./build-host/preprocess/preprocess piplup.nnue build-android/processed.nnue
 
-      # ------------------------------------------------------------------
-      # Android cross build.
-      # ------------------------------------------------------------------
       - name: Set up Android NDK
         uses: nttld/setup-ndk@v1
         id: ndk
