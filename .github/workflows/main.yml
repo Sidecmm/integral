@@ -15,13 +15,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Android NDK
-        uses: nttld/setup-ndk@v1
-        id: setup-ndk
-        with:
-          ndk-version: r26b
-          add-to-path: true
-
       - name: Install build tools
         run: |
           sudo apt-get update
@@ -31,7 +24,30 @@ jobs:
         run: |
           git clone --depth 1 https://github.com/DLTcollab/sse2neon.git third-party/sse2neon
 
-      - name: Configure CMake
+      # ---- Host build: preprocess the network on x86_64 ----
+      - name: Configure host build (to get preprocess tool)
+        run: |
+          cmake -B build-host -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_NATIVE=ON
+
+      - name: Build preprocess for host
+        run: cmake --build build-host --target preprocess -j$(nproc)
+
+      - name: Generate processed.nnue for the Android build
+        run: |
+          mkdir -p build-android
+          ./build-host/preprocess/preprocess piplup.nnue build-android/processed.nnue
+
+      # ---- Cross build: compile integral for Android ARM64 ----
+      - name: Set up Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26b
+          add-to-path: true
+
+      - name: Configure CMake for Android
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
@@ -45,7 +61,7 @@ jobs:
             -DBUILD_NEON_ANDROID=ON \
             -DUSE_SSE2NEON=ON
 
-      - name: Build
+      - name: Build Android binary
         run: cmake --build build-android --config Release -j$(nproc)
 
       - name: Show binary info
