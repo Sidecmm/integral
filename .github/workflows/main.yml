@@ -213,11 +213,23 @@ jobs:
                   print("  " + path + ": NEON branches=" + str(n) + ", has_constexpr_flags=" + str(flags))
           print("=== Patches applied ===")
 
+      # ------------------------------------------------------------------
+      # Host build: preprocess the network on x86_64.
+      #
+      # IMPORTANT: build with BUILD_SSE41_POPCNT (16-byte vectors), NOT
+      # BUILD_NATIVE. The preprocessed .nnue file's byte layout and struct
+      # alignment depend on the SIMD width the preprocess tool was compiled
+      # with. Android uses 16-byte vectors (SSE4.1 via sse2neon), so the
+      # host preprocess MUST also use 16-byte vectors. Building with
+      # -march=native on a modern runner would use 32/64-byte vectors and
+      # produce a file Android rejects (size mismatch / wrong layout).
+      # ------------------------------------------------------------------
       - name: Configure host build (for preprocess tool)
         run: |
           cmake -B build-host -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
-            -DBUILD_NATIVE=ON
+            -DBUILD_NATIVE=OFF \
+            -DBUILD_SSE41_POPCNT=ON
 
       - name: Build preprocess for host
         run: cmake --build build-host --target preprocess -j$(nproc)
@@ -226,6 +238,7 @@ jobs:
         run: |
           mkdir -p build-android
           ./build-host/preprocess/preprocess piplup.nnue build-android/processed.nnue
+          ls -la build-android/processed.nnue
 
       - name: Set up Android NDK
         uses: nttld/setup-ndk@v1
