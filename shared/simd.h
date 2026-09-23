@@ -12,8 +12,7 @@
 #include "../src/utils/types.h"
 
 #if defined(BUILD_NEON_ANDROID) && defined(USE_SSE2NEON)
-// Android / ARM64 build using sse2neon to emulate the SSE4.1 code path.
-// sse2neon.h must be on the include path (see CMake patch).
+// Android ARM64 build using sse2neon to emulate the SSE4.1 code path.
 #include "sse2neon.h"
 #define BUILD_HAS_BMI2 0
 #define BUILD_HAS_AVX512VBMI 0
@@ -25,7 +24,7 @@
 #define BUILD_HAS_POPCNT 1
 #define BUILD_HAS_NEON 1
 #elif defined(BUILD_NEON_ANDROID)
-// Native Android NEON build (no sse2neon). Uses compiler vector extensions.
+// Android ARM64 build, native vector extensions only (no sse2neon).
 #define BUILD_HAS_BMI2 0
 #define BUILD_HAS_AVX512VBMI 0
 #define BUILD_HAS_AVX512VNNI 0
@@ -117,8 +116,7 @@
   (BUILD_HAS_AVX512 || BUILD_HAS_AVX2 || BUILD_HAS_SSE41 || BUILD_HAS_NEON)
 
 #if defined(BUILD_NEON_ANDROID) && defined(USE_SSE2NEON)
-// sse2neon.h was already included in the first block above.
-// Do NOT include <immintrin.h> here — it does not exist on ARM.
+// sse2neon.h was already included at the top of this file.
 #elif BUILD_HAS_AVX512 || BUILD_HAS_AVX2 || BUILD_HAS_SSE41
 #include <immintrin.h>
 #elif BUILD_HAS_NEON
