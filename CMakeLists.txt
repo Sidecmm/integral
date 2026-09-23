@@ -200,8 +200,8 @@ if (LTO_SUPPORTED)
     set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_DEBUG OFF)
 endif ()
 
-# Add Clang-specific flags
-if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+# Add Clang-specific flags (skip on Android — NDK ships libc++, not libstdc++)
+if (CMAKE_CXX_COMPILER_ID STREQUAL "Clang" AND NOT ANDROID)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libstdc++")
 endif ()
 
